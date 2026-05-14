@@ -58,137 +58,29 @@ class Provider:
         }
 
 
-class ThunderbitHealthgradesScraper:
+class HealthgradesScraper:
     """
-    Healthgrades scraper using Thunderbit AI
+    Healthgrades scraper - PLACEHOLDER
     
-    Note: Requires Thunderbit CLI or Chrome extension
-    npm i -g @thunderbit/thunderbit-cli
+    NOTE: Requires Thunderbit API (paid) or manual Chrome extension use.
+    See Todoist task for Thunderbit research.
     
-    Or use Thunderbit API with API key
+    Free alternative: Use Chrome extension manually at:
+    https://chromewebstore.google.com/detail/thunderbit-ai-web-scraper/hbkblmodhbmcakopfckopccgp
     """
 
     BASE_URL = "https://www.healthgrades.com"
-    SEARCH_URL = "https://www.healthgrades.com/usearch"
 
-    def __init__(self, api_key: Optional[str] = None):
-        self.api_key = api_key or os.environ.get('THUNDERBIT_API_KEY')
-        self.session = requests.Session()
-        self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-            'Accept': 'application/json',
-        })
+    def __init__(self):
+        pass
 
     def search_providers(self, state: str, specialty: str = "Reproductive Endocrinology & Infertility",
                          limit: int = 20) -> List[Provider]:
-        """Search Healthgrades using Thunderbit AI scraper"""
-        providers = []
-        
-        # Build search URL
-        search_term = specialty.replace(' ', '%20')
-        url = f"{self.SEARCH_URL}?what={search_term}&where={state}&page=1"
-        
-        print(f"[Healthgrades via Thunderbit] Searching: {url}")
-        
-        # If we have Thunderbit API key, use it
-        if self.api_key:
-            providers = self._scrape_with_api(url, limit)
-        else:
-            # Fallback to direct scraping with instructions for Thunderbit
-            print("[Healthgrades] Thunderbit API key not configured")
-            print("[Healthgrades] To use Thunderbit:")
-            print("  1. Install Chrome extension: https://chromewebstore.google.com/detail/thunderbit")
-            print("  2. Navigate to the search URL above")
-            print("  3. Click 'AI Suggest Columns' then 'Scrape'")
-            print("  4. Or set THUNDERBIT_API_KEY environment variable")
-            
-        return providers
-
-    def _scrape_with_api(self, url: str, limit: int) -> List[Provider]:
-        """Scrape using Thunderbit API"""
-        providers = []
-        
-        try:
-            # Thunderbit API endpoint (hypothetical - check actual docs)
-            thunderbit_url = "https://api.thunderbit.com/scrape"
-            
-            payload = {
-                'url': url,
-                'selectors': {
-                    'provider_name': '[data-testid="provider-name"]',
-                    'profile_url': 'a[href*="/physician/"]',
-                    'location': '[data-testid="practice-address"]',
-                    'phone': '[data-testid="phone-number"]',
-                    'rating': '[data-testid="overall-rating"]',
-                    'specialty': '[data-testid="specialties-section"]'
-                }
-            }
-            
-            headers = {
-                'Authorization': f'Bearer {self.api_key}',
-                'Content-Type': 'application/json'
-            }
-            
-            response = self.session.post(thunderbit_url, json=payload, headers=headers, timeout=60)
-            
-            if response.status_code == 200:
-                data = response.json()
-                for item in data.get('results', [])[:limit]:
-                    provider = self._parse_thunderbit_result(item)
-                    if provider:
-                        providers.append(provider)
-            else:
-                print(f"[Thunderbit] API error: {response.status_code}")
-                
-        except Exception as e:
-            print(f"[Thunderbit] Error: {e}")
-            
-        return providers
-
-    def _parse_thunderbit_result(self, data: Dict) -> Optional[Provider]:
-        """Parse Thunderbit scraping result"""
-        try:
-            full_name = data.get('provider_name', '')
-            name_parts = self._parse_name(full_name)
-            
-            return Provider(
-                first_name=name_parts['first'],
-                last_name=name_parts['last'],
-                title=name_parts['title'],
-                full_name=full_name,
-                photo_url=data.get('photo_url'),
-                expertise=[data.get('specialty', '')] if data.get('specialty') else [],
-                healthgrades_rating=data.get('rating'),
-                review_count=data.get('review_count'),
-                office_location=data.get('location', ''),
-                city='',
-                state='',
-                zip_code='',
-                phone=data.get('phone'),
-                bio=data.get('bio', ''),
-                profile_url=urljoin(self.BASE_URL, data.get('profile_url', '')),
-                source='healthgrades',
-                insurance_accepted=[]
-            )
-        except Exception as e:
-            print(f"[Thunderbit] Parse error: {e}")
-            return None
-
-    def _parse_name(self, full_name: str) -> Dict:
-        """Parse full name into components"""
-        title = ""
-        titles = ['MD', 'DO', 'PhD', 'Dr.', 'Dr', 'NP', 'PA', 'RN']
-        
-        for t in titles:
-            if full_name.endswith(f", {t}") or full_name.endswith(f" {t}"):
-                title = t
-                full_name = full_name.replace(f", {t}", "").replace(f" {t}", "").strip()
-                break
-        
-        parts = full_name.split()
-        if len(parts) >= 2:
-            return {'first': parts[0], 'last': ' '.join(parts[1:]), 'title': title}
-        return {'first': full_name, 'last': '', 'title': title}
+        """Healthgrades scraping - requires Thunderbit (see Todoist)"""
+        print("[Healthgrades] Skipped - requires Thunderbit API key")
+        print("[Healthgrades] See Todoist task 'Research Thunderbit API' for details")
+        print("[Healthgrades] Or use Cigna Provider Directory (selected by default)")
+        return []
 
 
 class CignaProviderDirectoryScraper:
@@ -410,7 +302,7 @@ class REIScraper:
     """Main scraper that combines multiple sources"""
 
     def __init__(self):
-        self.healthgrades = ThunderbitHealthgradesScraper()
+        self.healthgrades = HealthgradesScraper()
         self.cigna = CignaProviderDirectoryScraper()
         self.betterdoctor = BetterDoctorScraper()
 
@@ -423,13 +315,14 @@ class REIScraper:
             sources: List of sources ['healthgrades', 'cigna', 'betterdoctor']
             network: Insurance network filter (legacy, now uses source selection)
         """
-        if sources is None:
-            sources = ['healthgrades']
+        # Default to Cigna if no sources specified (it's free and doesn't require API key)
+        if sources is None or len(sources) == 0:
+            sources = ['cigna']
 
         providers = []
 
         if 'healthgrades' in sources:
-            print(f"[Scraper] Querying Healthgrades via Thunderbit for {state}...")
+            print(f"[Scraper] Querying Healthgrades for {state}...")
             hg_providers = self.healthgrades.search_providers(state)
             providers.extend(hg_providers)
 
