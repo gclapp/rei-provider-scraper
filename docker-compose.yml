@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  rei-scraper:
+    build: .
+    container_name: rei-provider-scraper
+    ports:
+      - "5000:5000"
+    environment:
+      - SECRET_KEY=${SECRET_KEY:-rei-scraper-secret-key-change-in-production}
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:5000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
