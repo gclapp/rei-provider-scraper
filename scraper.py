@@ -69,12 +69,15 @@ class HealthgradesScraper:
             'Connection': 'keep-alive',
         })
 
-    def search_providers(self, state: str, specialty: str = "reproductive-endocrinology", limit: int = 20) -> List[Provider]:
+    def search_providers(self, state: str, specialty: str = "reproductive-endocrinology",
+                         limit: int = 20, insurance: str = None) -> List[Provider]:
         """Search for providers by state and extract full details"""
         providers = []
 
         # Healthgrades search URL format
-        url = f"{self.SEARCH_URL}?what={specialty.replace('-', '%20')}&where={state}&page=1"
+        # Add insurance filter if specified (e.g., 'cigna' -> 'Cigna')
+        insurance_param = f"&insurance={insurance.capitalize()}" if insurance else ""
+        url = f"{self.SEARCH_URL}?what={specialty.replace('-', '%20')}&where={state}{insurance_param}&page=1"
 
         try:
             print(f"Fetching search results from: {url}")
@@ -300,11 +303,11 @@ class REIScraper:
 
     def __init__(self):
         self.healthgrades = HealthgradesScraper()
-    
+
     def scrape(self, state: str, sources: List[str] = None, network: str = None) -> List[Provider]:
         """
         Scrape REI providers
-        
+
         Args:
             state: US state abbreviation (e.g., 'CA', 'NY')
             sources: List of sources to scrape ['healthgrades']
@@ -312,18 +315,13 @@ class REIScraper:
         """
         if sources is None:
             sources = ['healthgrades']
-        
+
         providers = []
-        
+
         if 'healthgrades' in sources:
             print(f"Scraping Healthgrades for {state}...")
-            hg_providers = self.healthgrades.search_providers(state)
+            # Pass insurance filter to search
+            hg_providers = self.healthgrades.search_providers(state, insurance=network)
             providers.extend(hg_providers)
-        
-        # Note: Cigna filtering would require checking each provider
-        # For now, we return all providers and note that filtering is needed
-        if network == 'cigna':
-            print(f"Note: Cigna network filtering requested but not yet implemented")
-            # TODO: Implement Cigna network checking for each provider
-        
+
         return providers
