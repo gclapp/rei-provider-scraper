@@ -23,10 +23,9 @@ def index():
 
 @app.route('/search', methods=['POST'])
 def rei_search():
-    """Handle REI search form submission"""
+    """Handle REI search form submission - defaults to Cigna network filter"""
     state = request.form.get('state', '').upper()
     sources = request.form.getlist('sources')
-    network = request.form.get('network')
     
     if not state:
         flash('Please select a state', 'error')
@@ -35,6 +34,9 @@ def rei_search():
     if not sources:
         flash('Please select at least one source', 'error')
         return redirect(url_for('index'))
+    
+    # Always filter for Cigna in-network providers
+    network = 'cigna'
     
     # Perform scrape
     try:
@@ -46,7 +48,7 @@ def rei_search():
         session['rei_search_params'] = {
             'state': state,
             'sources': sources,
-            'network': network
+            'network': 'Cigna In-Network'
         }
         
         return redirect(url_for('rei_results'))
