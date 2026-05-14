@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>REI Provider Scraper</title>
+    <link rel="icon" type="image/png" href="/static/logo.png">
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -22,6 +23,19 @@
             max-width: 500px;
             width: 100%;
             box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            text-align: center;
+        }
+        .logo {
+            width: 120px;
+            height: 120px;
+            margin-bottom: 20px;
+            border-radius: 50%;
+            border: 3px solid #667eea;
+            cursor: pointer;
+            transition: transform 0.3s ease;
+        }
+        .logo:hover {
+            transform: scale(1.05);
         }
         h1 {
             color: #333;
@@ -35,6 +49,7 @@
         }
         .form-group {
             margin-bottom: 24px;
+            text-align: left;
         }
         label {
             display: block;
@@ -107,10 +122,62 @@
             border-radius: 8px;
             border-left: 4px solid #c33;
         }
+        
+        /* Fullscreen logo overlay */
+        .logo-fullscreen {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.95);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+        
+        .logo-fullscreen.active {
+            display: flex;
+        }
+        
+        .logo-fullscreen img {
+            width: 80%;
+            max-width: 600px;
+            height: auto;
+            border-radius: 20px;
+            border: 5px solid #667eea;
+        }
+        
+        .logo-fullscreen .back-btn {
+            margin-top: 30px;
+            padding: 15px 40px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.2rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .logo-fullscreen .back-btn:hover {
+            background: #764ba2;
+            transform: translateY(-2px);
+        }
     </style>
 </head>
 <body>
+    <!-- Fullscreen Logo Overlay -->
+    <div id="logoFullscreen" class="logo-fullscreen">
+        <img src="/static/logo.png" alt="REI Provider Scraper Logo">
+        <button class="back-btn" onclick="closeLogoFullscreen()">← Back</button>
+    </div>
+
     <div class="container">
+        <img src="/static/logo.png" alt="REI Provider Scraper Logo" class="logo" onclick="openLogoFullscreen()">
         <h1>REI Provider Scraper</h1>
         <p class="subtitle">Search for Reproductive Endocrinology & Infertility specialists</p>
         
@@ -124,7 +191,7 @@
             {% endif %}
         {% endwith %}
         
-        <form method="POST" action="/rei/search">
+        <form method="POST" action="/search">
             <div class="form-group">
                 <label for="state">State</label>
                 <select name="state" id="state" required>
@@ -209,5 +276,31 @@
         
         <div class="version">Version {{ version }}</div>
     </div>
+    
+    <script>
+        function openLogoFullscreen() {
+            document.getElementById('logoFullscreen').classList.add('active');
+            document.body.style.overflow = 'hidden';
+        }
+        
+        function closeLogoFullscreen() {
+            document.getElementById('logoFullscreen').classList.remove('active');
+            document.body.style.overflow = 'auto';
+        }
+        
+        // Close on Escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeLogoFullscreen();
+            }
+        });
+        
+        // Close on clicking outside the image
+        document.getElementById('logoFullscreen').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeLogoFullscreen();
+            }
+        });
+    </script>
 </body>
 </html>
