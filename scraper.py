@@ -1,45 +1,52 @@
 """
 REI Provider Scraper
-Scrapes Healthgrades and Cigna for REI specialists
+Scrapes Healthgrades for REI specialists with full details
 """
 
 import requests
 from bs4 import BeautifulSoup
 import time
-import random
+import re
 from typing import List, Dict, Optional
 from dataclasses import dataclass
+from urllib.parse import urljoin
 
 @dataclass
 class Provider:
-    name: str
-    clinic: Optional[str]
-    address: str
+    first_name: str
+    last_name: str
+    title: str
+    full_name: str
+    photo_url: Optional[str]
+    expertise: List[str]
+    healthgrades_rating: Optional[float]
+    review_count: Optional[int]
+    office_location: str
     city: str
     state: str
     zip_code: str
     phone: Optional[str]
-    specialties: List[str]
-    healthgrades_score: Optional[float]
-    review_count: Optional[int]
-    cigna_in_network: Optional[bool]
-    cigna_plans: List[str]
+    bio: str
+    profile_url: str
     source: str
     
     def to_dict(self):
         return {
-            'name': self.name,
-            'clinic': self.clinic,
-            'address': self.address,
+            'first_name': self.first_name,
+            'last_name': self.last_name,
+            'title': self.title,
+            'full_name': self.full_name,
+            'photo_url': self.photo_url,
+            'expertise': self.expertise,
+            'healthgrades_rating': self.healthgrades_rating,
+            'review_count': self.review_count,
+            'office_location': self.office_location,
             'city': self.city,
             'state': self.state,
             'zip_code': self.zip_code,
             'phone': self.phone,
-            'specialties': self.specialties,
-            'healthgrades_score': self.healthgrades_score,
-            'review_count': self.review_count,
-            'cigna_in_network': self.cigna_in_network,
-            'cigna_plans': self.cigna_plans,
+            'bio': self.bio,
+            'profile_url': self.profile_url,
             'source': self.source
         }
 
@@ -50,118 +57,242 @@ class HealthgradesScraper:
     BASE_URL = "https://www.healthgrades.com"
     SEARCH_URL = "https://www.healthgrades.com/usearch"
     
-    def __init__(self, delay: float = 1.0):
+    def __init__(self, delay: float = 1.5):
         self.delay = delay
         self.session = requests.Session()
         self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'DNT': '1',
+            'Connection': 'keep-alive',
         })
     
-    def search_providers(self, state: str, specialty: str = "reproductive-endocrinology", limit: int = 50) -> List[Dict]:
-        """Search for providers by state"""
+    def search_providers(self, state: str, specialty: str = "reproductive-endocrinology", limit: int = 20) -> List[Provider]:
+        """Search for providers by state and extract full details"""
         providers = []
         
         # Healthgrades search URL format
-        url = f"{self.SEARCH_URL}?what={specialty.replace('-', '%20')}&where={state}"
+        url = f"{self.SEARCH_URL}?what={specialty.replace('-', '%20')}&where={state}&page=1"
         
         try:
+            print(f"Fetching search results from: {url}")
             response = self.session.get(url, timeout=30)
             response.raise_for_status()
             
             soup = BeautifulSoup(response.text, 'html.parser')
             
-            # Find provider cards (adjust selectors based on actual HTML)
-            provider_cards = soup.find_all('div', class_='provider-card') or soup.find_all('div', {'data-testid': 'provider-card'})
+            # Find provider cards - try multiple selectors
+            provider_cards = (
+                soup.find_all('div', {'data-testid': 'search-provider-card'}) or
+                soup.find_all('div', class_=re.compile('provider-card|search-result-card')) or
+                soup.find_all('article') or
+                soup.find_all('div', class_=re.compile('card'))
+            )
+            
+            print(f"Found {len(provider_cards)} provider cards")
             
             for card in provider_cards[:limit]:
-                provider = self._parse_provider_card(card)
-                if provider:
-                    providers.append(provider)
-                
-                time.sleep(self.delay)
+                try:
+                    # Get the profile URL from the card
+                    profile_link = card.find('a', href=re.compile('/physician/'))
+                    if not profile_link:
+                        continue
+                    
+                    profile_url = urljoin(self.BASE_URL, profile_link['href'])
+                    print(f"Processing: {profile_url}")
+                    
+                    # Get full details from profile page
+                    provider = self._get_provider_details(profile_url)
+                    if provider:
+                        providers.append(provider)
+                    
+                    time.sleep(self.delay)
+                    
+                except Exception as e:
+                    print(f"Error processing card: {e}")
+                    continue
             
         except Exception as e:
             print(f"Error searching Healthgrades: {e}")
         
         return providers
     
-    def _parse_provider_card(self, card) -> Optional[Dict]:
-        """Parse a provider card from search results"""
+    def _get_provider_details(self, profile_url: str) -> Optional[Provider]:
+        """Extract full provider details from profile page"""
         try:
+            response = self.session.get(profile_url, timeout=30)
+            response.raise_for_status()
+            
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            # Extract photo
+            photo_url = None
+            photo_elem = (
+                soup.find('img', {'data-testid': 'provider-photo'}) or
+                soup.find('img', class_=re.compile('provider-photo|profile-photo')) or
+                soup.find('img', alt=re.compile('photo|profile', re.I))
+            )
+            if photo_elem and photo_elem.get('src'):
+                photo_url = urljoin(self.BASE_URL, photo_elem['src'])
+            
             # Extract name
-            name_elem = card.find('h3') or card.find('a', class_='provider-name')
-            name = name_elem.text.strip() if name_elem else "Unknown"
+            full_name = ""
+            first_name = ""
+            last_name = ""
+            title = ""
             
-            # Extract clinic
-            clinic_elem = card.find('div', class_='clinic-name') or card.find('span', class_='practice-name')
-            clinic = clinic_elem.text.strip() if clinic_elem else None
+            name_elem = (
+                soup.find('h1', {'data-testid': 'provider-name'}) or
+                soup.find('h1', class_=re.compile('provider-name')) or
+                soup.find('h1')
+            )
+            if name_elem:
+                full_name = name_elem.get_text(strip=True)
+                # Parse name parts
+                name_parts = self._parse_name(full_name)
+                first_name = name_parts['first']
+                last_name = name_parts['last']
+                title = name_parts['title']
             
-            # Extract location
-            location_elem = card.find('div', class_='location') or card.find('address')
-            location_text = location_elem.text.strip() if location_elem else ""
+            # Extract rating
+            rating = None
+            review_count = None
+            rating_elem = (
+                soup.find('span', {'data-testid': 'overall-rating'}) or
+                soup.find('div', class_=re.compile('rating-score|rating-number'))
+            )
+            if rating_elem:
+                rating_text = rating_elem.get_text(strip=True)
+                rating_match = re.search(r'(\d+\.?\d*)', rating_text)
+                if rating_match:
+                    rating = float(rating_match.group(1))
             
-            # Parse address components
-            city, state, zip_code = self._parse_location(location_text)
+            # Extract review count
+            review_elem = (
+                soup.find('span', {'data-testid': 'review-count'}) or
+                soup.find('span', text=re.compile(r'\d+\s+reviews?', re.I))
+            )
+            if review_elem:
+                review_text = review_elem.get_text(strip=True)
+                review_match = re.search(r'(\d+)', review_text)
+                if review_match:
+                    review_count = int(review_match.group(1))
             
-            # Extract score
-            score_elem = card.find('span', class_='score') or card.find('div', class_='rating')
-            score = None
-            if score_elem:
-                try:
-                    score = float(score_elem.text.strip().split('/')[0])
-                except:
-                    pass
+            # Extract expertise/specialties
+            expertise = []
+            expertise_section = (
+                soup.find('div', {'data-testid': 'specialties-section'}) or
+                soup.find('section', text=re.compile('specialties', re.I)) or
+                soup.find('div', class_=re.compile('specialties'))
+            )
+            if expertise_section:
+                specialty_items = expertise_section.find_all(['li', 'span', 'a'])
+                for item in specialty_items:
+                    text = item.get_text(strip=True)
+                    if text and len(text) > 2:
+                        expertise.append(text)
             
-            return {
-                'name': name,
-                'clinic': clinic,
-                'address': location_text,
-                'city': city,
-                'state': state,
-                'zip_code': zip_code,
-                'healthgrades_score': score,
-                'source': 'healthgrades'
-            }
+            # Extract office location
+            office_location = ""
+            city = ""
+            state = ""
+            zip_code = ""
+            phone = None
+            
+            location_elem = (
+                soup.find('address', {'data-testid': 'practice-address'}) or
+                soup.find('div', class_=re.compile('practice-address|office-location')) or
+                soup.find('address')
+            )
+            if location_elem:
+                office_location = location_elem.get_text(separator=' ', strip=True)
+                # Parse location
+                location_parts = self._parse_location(office_location)
+                city = location_parts['city']
+                state = location_parts['state']
+                zip_code = location_parts['zip']
+            
+            # Extract phone
+            phone_elem = (
+                soup.find('a', href=re.compile('tel:')) or
+                soup.find('span', {'data-testid': 'phone-number'}) or
+                soup.find(text=re.compile(r'\(\d{3}\)\s*\d{3}-\d{4}'))
+            )
+            if phone_elem:
+                if phone_elem.name == 'a':
+                    phone = phone_elem.get_text(strip=True)
+                else:
+                    phone_match = re.search(r'\(\d{3}\)\s*\d{3}-\d{4}', str(phone_elem))
+                    if phone_match:
+                        phone = phone_match.group(0)
+            
+            # Extract bio/overview
+            bio = ""
+            bio_elem = (
+                soup.find('div', {'data-testid': 'provider-overview'}) or
+                soup.find('div', class_=re.compile('provider-bio|about-section|overview')) or
+                soup.find('p', class_=re.compile('description'))
+            )
+            if bio_elem:
+                bio = bio_elem.get_text(separator=' ', strip=True)
+            
+            return Provider(
+                first_name=first_name,
+                last_name=last_name,
+                title=title,
+                full_name=full_name,
+                photo_url=photo_url,
+                expertise=expertise[:5],  # Limit to top 5
+                healthgrades_rating=rating,
+                review_count=review_count,
+                office_location=office_location,
+                city=city,
+                state=state,
+                zip_code=zip_code,
+                phone=phone,
+                bio=bio[:500] if bio else "",  # Limit bio length
+                profile_url=profile_url,
+                source='healthgrades'
+            )
             
         except Exception as e:
-            print(f"Error parsing provider card: {e}")
+            print(f"Error getting provider details from {profile_url}: {e}")
             return None
     
-    def _parse_location(self, location_text: str) -> tuple:
-        """Parse city, state, zip from location text"""
-        # Simple parsing - enhance as needed
-        parts = location_text.split(',')
-        city = parts[0].strip() if len(parts) > 0 else ""
-        state_zip = parts[1].strip() if len(parts) > 1 else ""
+    def _parse_name(self, full_name: str) -> Dict:
+        """Parse full name into components"""
+        # Remove common titles
+        title = ""
+        titles = ['MD', 'DO', 'PhD', 'Dr.', 'Dr']
+        for t in titles:
+            if t in full_name:
+                title = t
+                full_name = full_name.replace(t, '').strip()
         
-        state_parts = state_zip.split()
-        state = state_parts[0] if len(state_parts) > 0 else ""
-        zip_code = state_parts[1] if len(state_parts) > 1 else ""
+        # Split name
+        parts = full_name.split()
+        if len(parts) >= 2:
+            return {
+                'first': parts[0],
+                'last': ' '.join(parts[1:]),
+                'title': title
+            }
+        return {'first': full_name, 'last': '', 'title': title}
+    
+    def _parse_location(self, location_text: str) -> Dict:
+        """Parse location text into components"""
+        result = {'city': '', 'state': '', 'zip': ''}
         
-        return city, state, zip_code
-
-
-class CignaScraper:
-    """Scraper for Cigna provider directory"""
-    
-    BASE_URL = "https://www.cigna.com"
-    
-    def __init__(self, delay: float = 1.0):
-        self.delay = delay
-        self.session = requests.Session()
-        self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        })
-    
-    def check_provider(self, name: str, state: str) -> Dict:
-        """Check if provider is in Cigna network"""
-        # Placeholder - implement actual Cigna scraping
-        time.sleep(self.delay)
-        return {
-            'in_network': None,
-            'plans': [],
-            'source': 'cigna'
-        }
+        # Try to match City, State ZIP pattern
+        match = re.search(r'([^,]+),\s*([A-Z]{2})\s*(\d{5}(-\d{4})?)?', location_text)
+        if match:
+            result['city'] = match.group(1).strip()
+            result['state'] = match.group(2)
+            result['zip'] = match.group(3) if match.group(3) else ''
+        
+        return result
 
 
 class REIScraper:
@@ -169,16 +300,14 @@ class REIScraper:
     
     def __init__(self):
         self.healthgrades = HealthgradesScraper()
-        self.cigna = CignaScraper()
     
-    def scrape(self, state: str, sources: List[str] = None, network: str = None) -> List[Provider]:
+    def scrape(self, state: str, sources: List[str] = None) -> List[Provider]:
         """
         Scrape REI providers
         
         Args:
             state: US state abbreviation (e.g., 'CA', 'NY')
-            sources: List of sources to scrape ['healthgrades', 'cigna']
-            network: Insurance network filter ('cigna' or None)
+            sources: List of sources to scrape ['healthgrades']
         """
         if sources is None:
             sources = ['healthgrades']
@@ -188,32 +317,6 @@ class REIScraper:
         if 'healthgrades' in sources:
             print(f"Scraping Healthgrades for {state}...")
             hg_providers = self.healthgrades.search_providers(state)
-            for p in hg_providers:
-                providers.append(Provider(
-                    name=p.get('name', ''),
-                    clinic=p.get('clinic'),
-                    address=p.get('address', ''),
-                    city=p.get('city', ''),
-                    state=p.get('state', ''),
-                    zip_code=p.get('zip_code', ''),
-                    phone=p.get('phone'),
-                    specialties=p.get('specialties', ['REI']),
-                    healthgrades_score=p.get('healthgrades_score'),
-                    review_count=p.get('review_count'),
-                    cigna_in_network=None,
-                    cigna_plans=[],
-                    source='healthgrades'
-                ))
-        
-        if 'cigna' in sources:
-            print(f"Checking Cigna network status...")
-            for provider in providers:
-                cigna_data = self.cigna.check_provider(provider.name, provider.state)
-                provider.cigna_in_network = cigna_data.get('in_network')
-                provider.cigna_plans = cigna_data.get('plans', [])
-        
-        # Filter by network if specified
-        if network == 'cigna':
-            providers = [p for p in providers if p.cigna_in_network]
+            providers.extend(hg_providers)
         
         return providers

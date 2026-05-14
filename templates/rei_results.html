@@ -3,281 +3,418 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Search Results - REI Provider Scraper</title>
+    <title>REI Provider Scraper - Results</title>
+    <link rel="icon" type="image/png" href="/static/logo.png">
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #f5f7fa;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
             padding: 20px;
         }
         .container {
-            max-width: 1200px;
+            max-width: 1400px;
             margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
         }
         header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 30px;
-            border-radius: 16px;
+            text-align: center;
             margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+        .logo {
+            width: 80px;
+            height: 80px;
+            margin-bottom: 15px;
+            border-radius: 50%;
+            border: 3px solid #667eea;
+            cursor: pointer;
+            transition: transform 0.3s ease;
+        }
+        .logo:hover {
+            transform: scale(1.05);
         }
         h1 {
-            font-size: 28px;
+            color: #333;
             margin-bottom: 10px;
         }
         .search-info {
-            opacity: 0.9;
-            font-size: 14px;
-        }
-        .back-link {
-            display: inline-block;
-            margin-top: 15px;
-            color: white;
-            text-decoration: none;
-            font-weight: 500;
-        }
-        .back-link:hover {
-            text-decoration: underline;
+            color: #666;
+            margin-bottom: 20px;
         }
         .stats {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin-bottom: 20px;
         }
-        .stat-card {
-            background: white;
-            padding: 20px;
-            border-radius: 12px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        .stat {
+            text-align: center;
         }
         .stat-value {
-            font-size: 32px;
-            font-weight: 700;
+            font-size: 2rem;
+            font-weight: bold;
             color: #667eea;
         }
         .stat-label {
             color: #666;
-            font-size: 14px;
-            margin-top: 4px;
+            font-size: 0.9rem;
         }
-        .providers-grid {
-            display: grid;
-            gap: 20px;
-        }
-        .provider-card {
-            background: white;
-            border-radius: 12px;
-            padding: 24px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-            transition: transform 0.2s, box-shadow 0.2s;
-        }
-        .provider-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 24px rgba(0,0,0,0.12);
-        }
-        .provider-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            margin-bottom: 16px;
-        }
-        .provider-name {
-            font-size: 20px;
-            font-weight: 600;
-            color: #333;
-        }
-        .provider-clinic {
-            color: #667eea;
-            font-size: 14px;
-            margin-top: 4px;
-        }
-        .score-badge {
+        .back-btn {
+            display: inline-block;
+            padding: 12px 30px;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            padding: 8px 16px;
-            border-radius: 20px;
+            text-decoration: none;
+            border-radius: 8px;
             font-weight: 600;
-            font-size: 14px;
+            margin-bottom: 20px;
         }
-        .provider-details {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 16px;
-            margin-top: 16px;
-            padding-top: 16px;
-            border-top: 1px solid #eee;
+        .back-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
         }
-        .detail-item {
+        
+        /* Table Styles */
+        .providers-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        .providers-table th {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 12px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+        .providers-table td {
+            padding: 15px 12px;
+            border-bottom: 1px solid #e0e0e0;
+            vertical-align: top;
+        }
+        .providers-table tr:hover {
+            background: #f8f9fa;
+        }
+        
+        /* Photo cell */
+        .photo-cell {
+            width: 100px;
+        }
+        .provider-photo {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 3px solid #667eea;
+        }
+        .photo-placeholder {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             display: flex;
-            align-items: flex-start;
-            gap: 10px;
-        }
-        .detail-icon {
-            width: 20px;
-            height: 20px;
-            color: #667eea;
-            flex-shrink: 0;
-        }
-        .detail-content {
-            flex: 1;
-        }
-        .detail-label {
-            font-size: 12px;
-            color: #999;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        .detail-value {
-            font-size: 14px;
-            color: #333;
-            margin-top: 2px;
-        }
-        .network-status {
-            display: inline-flex;
             align-items: center;
-            gap: 6px;
-            padding: 4px 12px;
-            border-radius: 12px;
-            font-size: 12px;
-            font-weight: 500;
+            justify-content: center;
+            color: white;
+            font-size: 2rem;
+            font-weight: bold;
         }
-        .network-in {
-            background: #e8f5e9;
-            color: #2e7d32;
+        
+        /* Name cell */
+        .name-cell {
+            min-width: 150px;
         }
-        .network-out {
-            background: #ffebee;
-            color: #c62828;
+        .first-name {
+            font-weight: 600;
+            color: #333;
+            font-size: 1.1rem;
         }
-        .network-unknown {
-            background: #f5f5f5;
+        .last-name {
+            font-weight: 700;
+            color: #667eea;
+            font-size: 1.2rem;
+        }
+        .title {
             color: #666;
+            font-size: 0.85rem;
+            margin-top: 4px;
         }
+        
+        /* Rating cell */
+        .rating-cell {
+            text-align: center;
+            min-width: 100px;
+        }
+        .rating-score {
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: #667eea;
+        }
+        .rating-stars {
+            color: #ffc107;
+            font-size: 1.2rem;
+        }
+        .review-count {
+            color: #666;
+            font-size: 0.85rem;
+            margin-top: 4px;
+        }
+        
+        /* Location cell */
+        .location-cell {
+            min-width: 180px;
+        }
+        .office-location {
+            color: #333;
+            font-size: 0.95rem;
+            line-height: 1.4;
+        }
+        .city-state {
+            color: #666;
+            font-size: 0.85rem;
+            margin-top: 4px;
+        }
+        .phone {
+            color: #667eea;
+            font-size: 0.9rem;
+            margin-top: 4px;
+        }
+        
+        /* Bio cell */
+        .bio-cell {
+            max-width: 300px;
+        }
+        .bio-text {
+            color: #555;
+            font-size: 0.9rem;
+            line-height: 1.5;
+            max-height: 120px;
+            overflow-y: auto;
+        }
+        
+        /* Expertise tags */
+        .expertise-cell {
+            min-width: 150px;
+        }
+        .expertise-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+        }
+        .expertise-tag {
+            background: #e9ecef;
+            color: #495057;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+        }
+        
+        /* Profile link */
+        .profile-link {
+            color: #667eea;
+            text-decoration: none;
+            font-size: 0.85rem;
+        }
+        .profile-link:hover {
+            text-decoration: underline;
+        }
+        
+        /* Empty state */
         .empty-state {
             text-align: center;
             padding: 60px 20px;
-            background: white;
-            border-radius: 16px;
         }
         .empty-state h2 {
-            color: #333;
+            color: #666;
             margin-bottom: 10px;
         }
-        .empty-state p {
-            color: #666;
+        
+        /* Fullscreen logo overlay */
+        .logo-fullscreen {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.95);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
         }
-        .version {
-            text-align: center;
+        .logo-fullscreen.active {
+            display: flex;
+        }
+        .logo-fullscreen img {
+            width: 80%;
+            max-width: 600px;
+            height: auto;
+            border-radius: 20px;
+            border: 5px solid #667eea;
+        }
+        .logo-fullscreen .close-btn {
             margin-top: 30px;
-            color: #999;
-            font-size: 12px;
+            padding: 15px 40px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.2rem;
+            font-weight: 600;
+            cursor: pointer;
         }
     </style>
 </head>
 <body>
+    <!-- Fullscreen Logo Overlay -->
+    <div id="logoFullscreen" class="logo-fullscreen">
+        <img src="/static/logo.png" alt="REI Provider Scraper Logo">
+        <button class="close-btn" onclick="closeLogoFullscreen()">← Back</button>
+    </div>
+
     <div class="container">
         <header>
+            <img src="/static/logo.png" alt="REI Provider Scraper Logo" class="logo" onclick="openLogoFullscreen()">
             <h1>Search Results</h1>
             <div class="search-info">
-                State: <strong>{{ search_params.state }}</strong> | 
-                Sources: <strong>{{ search_params.sources|join(', ') }}</strong>
-                {% if search_params.network %}
-                    | Network: <strong>{{ search_params.network }}</strong>
-                {% endif %}
+                <strong>State:</strong> {{ search_params.state }} | 
+                <strong>Sources:</strong> {{ search_params.sources|join(', ') }}
             </div>
-            <a href="/rei" class="back-link">← New Search</a>
+            <div class="stats">
+                <div class="stat">
+                    <div class="stat-value">{{ count }}</div>
+                    <div class="stat-label">Providers Found</div>
+                </div>
+            </div>
+            <a href="/" class="back-btn">← New Search</a>
         </header>
         
-        <div class="stats">
-            <div class="stat-card">
-                <div class="stat-value">{{ count }}</div>
-                <div class="stat-label">Providers Found</div>
-            </div>
-        </div>
-        
         {% if providers %}
-        <div class="providers-grid">
-            {% for provider in providers %}
-            <div class="provider-card">
-                <div class="provider-header">
-                    <div>
-                        <div class="provider-name">{{ provider.name }}</div>
-                        {% if provider.clinic %}
-                        <div class="provider-clinic">{{ provider.clinic }}</div>
+        <table class="providers-table">
+            <thead>
+                <tr>
+                    <th>Photo</th>
+                    <th>First Name</th>
+                    <th>Last Name</th>
+                    <th>Title</th>
+                    <th>Expertise</th>
+                    <th>Rating</th>
+                    <th>Office Location</th>
+                    <th>About</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for provider in providers %}
+                <tr>
+                    <!-- Photo -->
+                    <td class="photo-cell">
+                        {% if provider.photo_url %}
+                        <img src="{{ provider.photo_url }}" alt="{{ provider.full_name }}" class="provider-photo">
+                        {% else %}
+                        <div class="photo-placeholder">{{ provider.first_name[0] if provider.first_name else '?' }}</div>
                         {% endif %}
-                    </div>
-                    {% if provider.healthgrades_score %}
-                    <div class="score-badge">{{ provider.healthgrades_score }}/5</div>
-                    {% endif %}
-                </div>
-                
-                <div class="provider-details">
-                    <div class="detail-item">
-                        <div class="detail-content">
-                            <div class="detail-label">Address</div>
-                            <div class="detail-value">
-                                {{ provider.address }}<br>
-                                {{ provider.city }}, {{ provider.state }} {{ provider.zip_code }}
-                            </div>
-                        </div>
-                    </div>
+                    </td>
                     
-                    {% if provider.phone %}
-                    <div class="detail-item">
-                        <div class="detail-content">
-                            <div class="detail-label">Phone</div>
-                            <div class="detail-value">{{ provider.phone }}</div>
-                        </div>
-                    </div>
-                    {% endif %}
+                    <!-- First Name -->
+                    <td class="name-cell">
+                        <div class="first-name">{{ provider.first_name }}</div>
+                    </td>
                     
-                    {% if provider.specialties %}
-                    <div class="detail-item">
-                        <div class="detail-content">
-                            <div class="detail-label">Specialties</div>
-                            <div class="detail-value">{{ provider.specialties|join(', ') }}</div>
-                        </div>
-                    </div>
-                    {% endif %}
+                    <!-- Last Name -->
+                    <td class="name-cell">
+                        <div class="last-name">{{ provider.last_name }}</div>
+                    </td>
                     
-                    <div class="detail-item">
-                        <div class="detail-content">
-                            <div class="detail-label">Cigna Network</div>
-                            <div class="detail-value">
-                                {% if provider.cigna_in_network == True %}
-                                    <span class="network-status network-in">✓ In Network</span>
-                                {% elif provider.cigna_in_network == False %}
-                                    <span class="network-status network-out">✗ Out of Network</span>
-                                {% else %}
-                                    <span class="network-status network-unknown">? Unknown</span>
-                                {% endif %}
-                            </div>
-                        </div>
-                    </div>
+                    <!-- Title -->
+                    <td>
+                        <div class="title">{{ provider.title }}</div>
+                    </td>
                     
-                    {% if provider.review_count %}
-                    <div class="detail-item">
-                        <div class="detail-content">
-                            <div class="detail-label">Reviews</div>
-                            <div class="detail-value">{{ provider.review_count }} reviews</div>
+                    <!-- Expertise -->
+                    <td class="expertise-cell">
+                        <div class="expertise-tags">
+                            {% for exp in provider.expertise %}
+                            <span class="expertise-tag">{{ exp }}</span>
+                            {% endfor %}
                         </div>
-                    </div>
-                    {% endif %}
-                </div>
-            </div>
-            {% endfor %}
-        </div>
+                    </td>
+                    
+                    <!-- Rating -->
+                    <td class="rating-cell">
+                        {% if provider.healthgrades_rating %}
+                        <div class="rating-score">{{ "%.1f"|format(provider.healthgrades_rating) }}</div>
+                        <div class="rating-stars">
+                            {% for i in range(provider.healthgrades_rating|int) %}★{% endfor %}
+                        </div>
+                        {% if provider.review_count %}
+                        <div class="review-count">({{ provider.review_count }} reviews)</div>
+                        {% endif %}
+                        {% else %}
+                        <span style="color: #999;">—</span>
+                        {% endif %}
+                    </td>
+                    
+                    <!-- Office Location -->
+                    <td class="location-cell">
+                        <div class="office-location">{{ provider.office_location }}</div>
+                        <div class="city-state">{{ provider.city }}, {{ provider.state }} {{ provider.zip_code }}</div>
+                        {% if provider.phone %}
+                        <div class="phone">{{ provider.phone }}</div>
+                        {% endif %}
+                    </td>
+                    
+                    <!-- Bio -->
+                    <td class="bio-cell">
+                        {% if provider.bio %}
+                        <div class="bio-text">{{ provider.bio }}</div>
+                        {% else %}
+                        <span style="color: #999;">No bio available</span>
+                        {% endif %}
+                        <br>
+                        <a href="{{ provider.profile_url }}" target="_blank" class="profile-link">View Profile →</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
         {% else %}
         <div class="empty-state">
-            <h2>No Providers Found</h2>
-            <p>Try adjusting your search criteria or selecting different data sources.</p>
+            <h2>No providers found</h2>
+            <p>Try adjusting your search criteria.</p>
         </div>
         {% endif %}
-        
-        <div class="version">Version {{ version }}</div>
     </div>
+    
+    <script>
+        function openLogoFullscreen() {
+            document.getElementById('logoFullscreen').classList.add('active');
+            document.body.style.overflow = 'hidden';
+        }
+        
+        function closeLogoFullscreen() {
+            document.getElementById('logoFullscreen').classList.remove('active');
+            document.body.style.overflow = 'auto';
+        }
+        
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeLogoFullscreen();
+            }
+        });
+        
+        document.getElementById('logoFullscreen').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeLogoFullscreen();
+            }
+        });
+    </script>
 </body>
 </html>
