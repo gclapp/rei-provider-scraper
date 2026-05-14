@@ -18,15 +18,10 @@ VERSION = "1.0.0"
 
 @app.route('/')
 def index():
-    """Home page - redirect to search"""
-    return redirect(url_for('rei_search'))
-
-@app.route('/rei')
-def rei_index():
     """REI Provider Scraper - Search Form"""
     return render_template('rei_search.html', version=VERSION)
 
-@app.route('/rei/search', methods=['POST'])
+@app.route('/search', methods=['POST'])
 def rei_search():
     """Handle REI search form submission"""
     state = request.form.get('state', '').upper()
@@ -35,11 +30,11 @@ def rei_search():
     
     if not state:
         flash('Please select a state', 'error')
-        return redirect(url_for('rei_index'))
+        return redirect(url_for('index'))
     
     if not sources:
         flash('Please select at least one source', 'error')
-        return redirect(url_for('rei_index'))
+        return redirect(url_for('index'))
     
     # Perform scrape
     try:
@@ -58,9 +53,9 @@ def rei_search():
         
     except Exception as e:
         flash(f'Error during search: {str(e)}', 'error')
-        return redirect(url_for('rei_index'))
+        return redirect(url_for('index'))
 
-@app.route('/rei/results')
+@app.route('/results')
 def rei_results():
     """Display REI search results"""
     providers = session.get('rei_results', [])
