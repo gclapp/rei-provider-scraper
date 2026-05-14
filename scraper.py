@@ -1,11 +1,17 @@
 """
 REI Provider Scraper
-Scrapes Healthgrades for REI specialists using their API
+Multi-source scraper for REI specialists
+
+Data Sources:
+1. Healthgrades (via Thunderbit AI Scraper)
+2. Cigna Provider Directory (FHIR API)
+3. BetterDoctor API (planned - see Todoist task)
 """
 
 import requests
 import time
 import re
+import os
 from typing import List, Dict, Optional
 from dataclasses import dataclass
 from urllib.parse import urljoin
@@ -28,6 +34,7 @@ class Provider:
     bio: str
     profile_url: str
     source: str
+    insurance_accepted: List[str]
 
     def to_dict(self):
         return {
@@ -46,315 +53,375 @@ class Provider:
             'phone': self.phone,
             'bio': self.bio,
             'profile_url': self.profile_url,
-            'source': self.source
+            'source': self.source,
+            'insurance_accepted': self.insurance_accepted
         }
 
 
-class HealthgradesScraper:
-    """Scraper for Healthgrades.com using their API"""
+class ThunderbitHealthgradesScraper:
+    """
+    Healthgrades scraper using Thunderbit AI
+    
+    Note: Requires Thunderbit CLI or Chrome extension
+    npm i -g @thunderbit/thunderbit-cli
+    
+    Or use Thunderbit API with API key
+    """
 
     BASE_URL = "https://www.healthgrades.com"
-    API_BASE = "https://www.healthgrades.com/api"
+    SEARCH_URL = "https://www.healthgrades.com/usearch"
 
-    def __init__(self, delay: float = 1.0):
-        self.delay = delay
+    def __init__(self, api_key: Optional[str] = None):
+        self.api_key = api_key or os.environ.get('THUNDERBIT_API_KEY')
         self.session = requests.Session()
         self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'application/json, text/plain, */*',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Referer': 'https://www.healthgrades.com/',
-            'Origin': 'https://www.healthgrades.com',
-            'Connection': 'keep-alive',
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+            'Accept': 'application/json',
         })
 
     def search_providers(self, state: str, specialty: str = "Reproductive Endocrinology & Infertility",
-                         limit: int = 20, insurance: str = None) -> List[Provider]:
-        """Search for providers by state using Healthgrades API"""
+                         limit: int = 20) -> List[Provider]:
+        """Search Healthgrades using Thunderbit AI scraper"""
         providers = []
-
-        # Get coordinates for the state (use state capital or center)
-        state_coords = self._get_state_coords(state)
-        if not state_coords:
-            print(f"Could not get coordinates for state: {state}")
-            return providers
-
-        # Build API URL for provider search
-        # Use the universal search API
+        
+        # Build search URL
         search_term = specialty.replace(' ', '%20')
-        pt = f"{state_coords['lat']},{state_coords['lng']}"
-
-        # Try the provider search endpoint
-        url = f"{self.API_BASE}/search/providers"
-
-        params = {
-            'what': specialty,
-            'where': state,
-            'pt': pt,
-            'pageNum': 1,
-            'pageSize': min(limit, 20),
-            'searchType': 'PracticingSpecialty'
-        }
-
-        # Add insurance filter if specified
-        if insurance:
-            params['insurance'] = insurance.capitalize()
-
-        try:
-            print(f"Searching Healthgrades API for {specialty} in {state}...")
-            print(f"URL: {url}")
-            print(f"Params: {params}")
-
-            response = self.session.get(url, params=params, timeout=30)
-            print(f"Response status: {response.status_code}")
-
-            if response.status_code == 200:
-                data = response.json()
-                print(f"Response keys: {data.keys() if isinstance(data, dict) else 'Not a dict'}")
-
-                # Extract providers from response
-                provider_list = self._extract_providers_from_response(data, state)
-                print(f"Found {len(provider_list)} providers from API")
-
-                for provider_data in provider_list[:limit]:
-                    provider = self._parse_provider_data(provider_data)
-                    if provider:
-                        providers.append(provider)
-                    time.sleep(self.delay)
-
-            else:
-                print(f"API returned status {response.status_code}: {response.text[:500]}")
-
-        except Exception as e:
-            print(f"Error searching Healthgrades API: {e}")
-            import traceback
-            traceback.print_exc()
-
+        url = f"{self.SEARCH_URL}?what={search_term}&where={state}&page=1"
+        
+        print(f"[Healthgrades via Thunderbit] Searching: {url}")
+        
+        # If we have Thunderbit API key, use it
+        if self.api_key:
+            providers = self._scrape_with_api(url, limit)
+        else:
+            # Fallback to direct scraping with instructions for Thunderbit
+            print("[Healthgrades] Thunderbit API key not configured")
+            print("[Healthgrades] To use Thunderbit:")
+            print("  1. Install Chrome extension: https://chromewebstore.google.com/detail/thunderbit")
+            print("  2. Navigate to the search URL above")
+            print("  3. Click 'AI Suggest Columns' then 'Scrape'")
+            print("  4. Or set THUNDERBIT_API_KEY environment variable")
+            
         return providers
 
-    def _get_state_coords(self, state: str) -> Optional[Dict]:
-        """Get approximate coordinates for a state"""
-        # State center coordinates (approximate)
-        state_centers = {
-            'AL': {'lat': 32.806671, 'lng': -86.791130},
-            'AK': {'lat': 61.370716, 'lng': -152.404419},
-            'AZ': {'lat': 33.729759, 'lng': -111.431221},
-            'AR': {'lat': 34.969704, 'lng': -92.373123},
-            'CA': {'lat': 36.778259, 'lng': -119.417931},
-            'CO': {'lat': 39.059811, 'lng': -105.311104},
-            'CT': {'lat': 41.597782, 'lng': -72.755371},
-            'DE': {'lat': 39.318523, 'lng': -75.507141},
-            'FL': {'lat': 27.766279, 'lng': -81.686783},
-            'GA': {'lat': 33.040619, 'lng': -83.643074},
-            'HI': {'lat': 21.094318, 'lng': -157.498337},
-            'ID': {'lat': 44.240459, 'lng': -114.478828},
-            'IL': {'lat': 40.349457, 'lng': -88.986137},
-            'IN': {'lat': 39.849426, 'lng': -86.258278},
-            'IA': {'lat': 42.011539, 'lng': -93.210526},
-            'KS': {'lat': 38.526600, 'lng': -96.726486},
-            'KY': {'lat': 37.668140, 'lng': -84.670067},
-            'LA': {'lat': 31.169546, 'lng': -91.867805},
-            'ME': {'lat': 44.693947, 'lng': -69.381927},
-            'MD': {'lat': 39.063946, 'lng': -76.802101},
-            'MA': {'lat': 42.230171, 'lng': -71.530106},
-            'MI': {'lat': 43.326618, 'lng': -84.536095},
-            'MN': {'lat': 45.694454, 'lng': -93.900192},
-            'MS': {'lat': 32.741646, 'lng': -89.678696},
-            'MO': {'lat': 38.456085, 'lng': -92.288368},
-            'MT': {'lat': 46.921925, 'lng': -110.454353},
-            'NE': {'lat': 41.125370, 'lng': -98.268082},
-            'NV': {'lat': 38.313515, 'lng': -117.055374},
-            'NH': {'lat': 43.452492, 'lng': -71.563896},
-            'NJ': {'lat': 40.298904, 'lng': -74.521011},
-            'NM': {'lat': 34.840515, 'lng': -106.248482},
-            'NY': {'lat': 42.165726, 'lng': -74.948051},
-            'NC': {'lat': 35.630066, 'lng': -79.806419},
-            'ND': {'lat': 47.528912, 'lng': -99.784012},
-            'OH': {'lat': 40.388783, 'lng': -82.764915},
-            'OK': {'lat': 35.565342, 'lng': -96.928917},
-            'OR': {'lat': 44.572021, 'lng': -122.070938},
-            'PA': {'lat': 40.590752, 'lng': -77.209755},
-            'RI': {'lat': 41.680893, 'lng': -71.511780},
-            'SC': {'lat': 33.856892, 'lng': -80.945007},
-            'SD': {'lat': 44.299782, 'lng': -99.438828},
-            'TN': {'lat': 35.747845, 'lng': -86.692345},
-            'TX': {'lat': 31.054487, 'lng': -97.563461},
-            'UT': {'lat': 40.150032, 'lng': -111.862434},
-            'VT': {'lat': 44.045876, 'lng': -72.710686},
-            'VA': {'lat': 37.769337, 'lng': -78.169968},
-            'WA': {'lat': 47.400902, 'lng': -121.490494},
-            'WV': {'lat': 38.491226, 'lng': -80.954453},
-            'WI': {'lat': 44.268543, 'lng': -89.616508},
-            'WY': {'lat': 42.755966, 'lng': -107.302490},
-            'DC': {'lat': 38.905985, 'lng': -77.033418}
-        }
-        return state_centers.get(state.upper())
-
-    def _extract_providers_from_response(self, data: Dict, state: str) -> List[Dict]:
-        """Extract provider list from API response"""
+    def _scrape_with_api(self, url: str, limit: int) -> List[Provider]:
+        """Scrape using Thunderbit API"""
         providers = []
-
-        # Try different response structures
-        if isinstance(data, dict):
-            # Try 'results' key
-            if 'results' in data:
-                providers = data['results']
-            # Try 'response' -> 'results'
-            elif 'response' in data and isinstance(data['response'], dict):
-                if 'results' in data['response']:
-                    providers = data['response']['results']
-                elif 'providers' in data['response']:
-                    providers = data['response']['providers']
-            # Try 'data' key
-            elif 'data' in data:
-                if isinstance(data['data'], list):
-                    providers = data['data']
-                elif isinstance(data['data'], dict) and 'results' in data['data']:
-                    providers = data['data']['results']
-            # Try 'providers' key directly
-            elif 'providers' in data:
-                providers = data['providers']
-            # Try 'searchResults'
-            elif 'searchResults' in data:
-                providers = data['searchResults']
-
-        return providers if isinstance(providers, list) else []
-
-    def _parse_provider_data(self, data: Dict) -> Optional[Provider]:
-        """Parse provider data from API response"""
+        
         try:
-            # Extract basic info
-            full_name = data.get('name', '') or data.get('fullName', '')
-            if not full_name:
-                return None
+            # Thunderbit API endpoint (hypothetical - check actual docs)
+            thunderbit_url = "https://api.thunderbit.com/scrape"
+            
+            payload = {
+                'url': url,
+                'selectors': {
+                    'provider_name': '[data-testid="provider-name"]',
+                    'profile_url': 'a[href*="/physician/"]',
+                    'location': '[data-testid="practice-address"]',
+                    'phone': '[data-testid="phone-number"]',
+                    'rating': '[data-testid="overall-rating"]',
+                    'specialty': '[data-testid="specialties-section"]'
+                }
+            }
+            
+            headers = {
+                'Authorization': f'Bearer {self.api_key}',
+                'Content-Type': 'application/json'
+            }
+            
+            response = self.session.post(thunderbit_url, json=payload, headers=headers, timeout=60)
+            
+            if response.status_code == 200:
+                data = response.json()
+                for item in data.get('results', [])[:limit]:
+                    provider = self._parse_thunderbit_result(item)
+                    if provider:
+                        providers.append(provider)
+            else:
+                print(f"[Thunderbit] API error: {response.status_code}")
+                
+        except Exception as e:
+            print(f"[Thunderbit] Error: {e}")
+            
+        return providers
 
-            # Parse name
+    def _parse_thunderbit_result(self, data: Dict) -> Optional[Provider]:
+        """Parse Thunderbit scraping result"""
+        try:
+            full_name = data.get('provider_name', '')
             name_parts = self._parse_name(full_name)
-
-            # Extract photo
-            photo_url = None
-            if 'imageUrl' in data:
-                photo_url = urljoin(self.BASE_URL, data['imageUrl'])
-            elif 'photoUrl' in data:
-                photo_url = urljoin(self.BASE_URL, data['photoUrl'])
-
-            # Extract rating
-            rating = None
-            if 'rating' in data:
-                rating = float(data['rating']) if isinstance(data['rating'], (int, float, str)) else None
-            elif 'overallRating' in data:
-                rating = float(data['overallRating']) if isinstance(data['overallRating'], (int, float, str)) else None
-            elif 'averageRating' in data:
-                rating = float(data['averageRating']) if isinstance(data['averageRating'], (int, float, str)) else None
-
-            # Extract review count
-            review_count = None
-            if 'reviewCount' in data:
-                review_count = int(data['reviewCount']) if isinstance(data['reviewCount'], (int, float, str)) else None
-            elif 'numberOfReviews' in data:
-                review_count = int(data['numberOfReviews']) if isinstance(data['numberOfReviews'], (int, float, str)) else None
-
-            # Extract expertise/specialties
-            expertise = []
-            if 'specialties' in data and isinstance(data['specialties'], list):
-                expertise = [s.get('name', s) if isinstance(s, dict) else s for s in data['specialties']]
-            elif 'specialty' in data:
-                expertise = [data['specialty']]
-
-            # Extract location
-            office_location = ""
-            city = data.get('city', '')
-            state = data.get('state', '')
-            zip_code = data.get('zip', '') or data.get('zipCode', '')
-
-            if 'address' in data:
-                if isinstance(data['address'], dict):
-                    office_location = data['address'].get('street', '')
-                    city = city or data['address'].get('city', '')
-                    state = state or data['address'].get('state', '')
-                    zip_code = zip_code or data['address'].get('zip', '')
-                else:
-                    office_location = data['address']
-
-            if city and state:
-                office_location = f"{office_location}, {city}, {state} {zip_code}".strip(', ')
-
-            # Extract phone
-            phone = data.get('phone') or data.get('phoneNumber')
-
-            # Extract bio
-            bio = data.get('bio', '') or data.get('overview', '') or data.get('description', '')
-
-            # Extract profile URL
-            profile_url = ""
-            if 'profileUrl' in data:
-                profile_url = urljoin(self.BASE_URL, data['profileUrl'])
-            elif 'url' in data:
-                profile_url = urljoin(self.BASE_URL, data['url'])
-            elif 'providerId' in data:
-                profile_url = f"{self.BASE_URL}/physician/{data['providerId']}"
-
+            
             return Provider(
                 first_name=name_parts['first'],
                 last_name=name_parts['last'],
                 title=name_parts['title'],
                 full_name=full_name,
-                photo_url=photo_url,
-                expertise=expertise[:5],
-                healthgrades_rating=rating,
-                review_count=review_count,
-                office_location=office_location,
-                city=city,
-                state=state,
-                zip_code=zip_code,
-                phone=phone,
-                bio=bio[:500] if bio else "",
-                profile_url=profile_url,
-                source='healthgrades'
+                photo_url=data.get('photo_url'),
+                expertise=[data.get('specialty', '')] if data.get('specialty') else [],
+                healthgrades_rating=data.get('rating'),
+                review_count=data.get('review_count'),
+                office_location=data.get('location', ''),
+                city='',
+                state='',
+                zip_code='',
+                phone=data.get('phone'),
+                bio=data.get('bio', ''),
+                profile_url=urljoin(self.BASE_URL, data.get('profile_url', '')),
+                source='healthgrades',
+                insurance_accepted=[]
             )
-
         except Exception as e:
-            print(f"Error parsing provider data: {e}")
+            print(f"[Thunderbit] Parse error: {e}")
             return None
 
     def _parse_name(self, full_name: str) -> Dict:
         """Parse full name into components"""
         title = ""
         titles = ['MD', 'DO', 'PhD', 'Dr.', 'Dr', 'NP', 'PA', 'RN']
-
-        # Check for titles at the end
+        
         for t in titles:
             if full_name.endswith(f", {t}") or full_name.endswith(f" {t}"):
                 title = t
                 full_name = full_name.replace(f", {t}", "").replace(f" {t}", "").strip()
                 break
-
-        # Split name
+        
         parts = full_name.split()
         if len(parts) >= 2:
-            return {
-                'first': parts[0],
-                'last': ' '.join(parts[1:]),
-                'title': title
-            }
+            return {'first': parts[0], 'last': ' '.join(parts[1:]), 'title': title}
         return {'first': full_name, 'last': '', 'title': title}
+
+
+class CignaProviderDirectoryScraper:
+    """
+    Cigna Provider Directory scraper using FHIR API
+    
+    API Endpoint: https://fhir.cigna.com/ProviderDirectory/v1
+    Documentation: https://developer.cigna.com/
+    """
+
+    BASE_URL = "https://fhir.cigna.com/ProviderDirectory/v1"
+    WEB_URL = "https://hcpdirectory.cigna.com"
+
+    def __init__(self, client_id: Optional[str] = None, client_secret: Optional[str] = None):
+        self.client_id = client_id or os.environ.get('CIGNA_CLIENT_ID')
+        self.client_secret = client_secret or os.environ.get('CIGNA_CLIENT_SECRET')
+        self.access_token = None
+        self.session = requests.Session()
+        self.session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+            'Accept': 'application/fhir+json',
+            'Content-Type': 'application/fhir+json'
+        })
+
+    def _authenticate(self):
+        """Get OAuth2 access token from Cigna"""
+        if not self.client_id or not self.client_secret:
+            print("[Cigna] No API credentials configured")
+            return False
+            
+        try:
+            auth_url = "https://developer.cigna.com/oauth2/token"
+            
+            payload = {
+                'grant_type': 'client_credentials',
+                'client_id': self.client_id,
+                'client_secret': self.client_secret,
+                'scope': 'provider_directory'
+            }
+            
+            response = self.session.post(auth_url, data=payload, timeout=30)
+            
+            if response.status_code == 200:
+                data = response.json()
+                self.access_token = data.get('access_token')
+                self.session.headers['Authorization'] = f'Bearer {self.access_token}'
+                return True
+            else:
+                print(f"[Cigna] Auth failed: {response.status_code}")
+                return False
+                
+        except Exception as e:
+            print(f"[Cigna] Auth error: {e}")
+            return False
+
+    def search_providers(self, state: str, specialty: str = "Reproductive Endocrinology",
+                         limit: int = 20) -> List[Provider]:
+        """Search Cigna Provider Directory for REI specialists"""
+        providers = []
+        
+        print(f"[Cigna] Searching for {specialty} in {state}...")
+        
+        # Try FHIR API first
+        if self.client_id and self.client_secret:
+            providers = self._search_fhir_api(state, specialty, limit)
+        
+        # Fallback to web scraping if API fails or no credentials
+        if not providers:
+            print("[Cigna] Falling back to web directory...")
+            providers = self._search_web_directory(state, specialty, limit)
+        
+        return providers
+
+    def _search_fhir_api(self, state: str, specialty: str, limit: int) -> List[Provider]:
+        """Search using Cigna FHIR API"""
+        providers = []
+        
+        if not self._authenticate():
+            return providers
+        
+        try:
+            # FHIR Practitioner search
+            url = f"{self.BASE_URL}/Practitioner"
+            
+            params = {
+                'address-state': state,
+                'specialty': specialty,
+                '_count': min(limit, 50)
+            }
+            
+            response = self.session.get(url, params=params, timeout=30)
+            
+            if response.status_code == 200:
+                data = response.json()
+                entries = data.get('entry', [])
+                
+                for entry in entries[:limit]:
+                    resource = entry.get('resource', {})
+                    provider = self._parse_fhir_practitioner(resource)
+                    if provider:
+                        providers.append(provider)
+            else:
+                print(f"[Cigna FHIR] API error: {response.status_code}")
+                
+        except Exception as e:
+            print(f"[Cigna FHIR] Error: {e}")
+            
+        return providers
+
+    def _search_web_directory(self, state: str, specialty: str, limit: int) -> List[Provider]:
+        """Search using Cigna web directory (fallback)"""
+        providers = []
+        
+        try:
+            # Cigna web search URL
+            search_url = f"{self.WEB_URL}/web/public/consumer/directory/search"
+            
+            params = {
+                'location': state,
+                'specialty': specialty.replace(' ', '%20'),
+                'type': 'provider'
+            }
+            
+            print(f"[Cigna Web] URL: {search_url}?{ '&'.join(f'{k}={v}' for k,v in params.items()) }")
+            
+            # Note: This would require Selenium/Playwright for JavaScript rendering
+            # For now, return empty and instruct user
+            print("[Cigna Web] Web scraping requires headless browser (Selenium/Playwright)")
+            print("[Cigna Web] Consider using FHIR API with client credentials")
+            
+        except Exception as e:
+            print(f"[Cigna Web] Error: {e}")
+            
+        return providers
+
+    def _parse_fhir_practitioner(self, resource: Dict) -> Optional[Provider]:
+        """Parse FHIR Practitioner resource"""
+        try:
+            # Extract name
+            name_data = resource.get('name', [{}])[0]
+            first_name = name_data.get('given', [''])[0]
+            last_name = name_data.get('family', '')
+            full_name = f"{first_name} {last_name}".strip()
+            
+            # Extract address
+            address_data = resource.get('address', [{}])[0]
+            city = address_data.get('city', '')
+            state = address_data.get('state', '')
+            zip_code = address_data.get('postalCode', '')
+            street = ' '.join(address_data.get('line', []))
+            office_location = f"{street}, {city}, {state} {zip_code}".strip(', ')
+            
+            # Extract telecom (phone)
+            phone = None
+            for telecom in resource.get('telecom', []):
+                if telecom.get('system') == 'phone':
+                    phone = telecom.get('value')
+                    break
+            
+            # Extract specialty
+            expertise = []
+            for coding in resource.get('specialty', []):
+                for code in coding.get('coding', []):
+                    if code.get('display'):
+                        expertise.append(code['display'])
+            
+            # Build profile URL
+            practitioner_id = resource.get('id', '')
+            profile_url = f"{self.WEB_URL}/provider/{practitioner_id}"
+            
+            return Provider(
+                first_name=first_name,
+                last_name=last_name,
+                title='MD',
+                full_name=full_name,
+                photo_url=None,
+                expertise=expertise,
+                healthgrades_rating=None,
+                review_count=None,
+                office_location=office_location,
+                city=city,
+                state=state,
+                zip_code=zip_code,
+                phone=phone,
+                bio='',
+                profile_url=profile_url,
+                source='cigna',
+                insurance_accepted=['Cigna']
+            )
+            
+        except Exception as e:
+            print(f"[Cigna] Parse error: {e}")
+            return None
+
+
+class BetterDoctorScraper:
+    """
+    BetterDoctor API scraper
+    
+    TODO: Implement BetterDoctor API integration
+    Task ID: See Todoist task "Implement BetterDoctor API search for REI Provider Scraper"
+    
+    API Docs: https://developer.betterdoctor.com/
+    """
+    
+    def __init__(self, api_key: Optional[str] = None):
+        self.api_key = api_key or os.environ.get('BETTERDOCTOR_API_KEY')
+        self.base_url = "https://api.betterdoctor.com"
+        
+    def search_providers(self, state: str, specialty: str = "reproductive-endocrinology",
+                         limit: int = 20) -> List[Provider]:
+        """Search BetterDoctor API - NOT YET IMPLEMENTED"""
+        print("[BetterDoctor] API integration not yet implemented")
+        print("[BetterDoctor] See Todoist task for implementation")
+        return []
 
 
 class REIScraper:
     """Main scraper that combines multiple sources"""
 
     def __init__(self):
-        self.healthgrades = HealthgradesScraper()
+        self.healthgrades = ThunderbitHealthgradesScraper()
+        self.cigna = CignaProviderDirectoryScraper()
+        self.betterdoctor = BetterDoctorScraper()
 
     def scrape(self, state: str, sources: List[str] = None, network: str = None) -> List[Provider]:
         """
-        Scrape REI providers
-
+        Scrape REI providers from selected sources
+        
         Args:
             state: US state abbreviation (e.g., 'CA', 'NY')
-            sources: List of sources to scrape ['healthgrades']
-            network: Insurance network filter ('cigna' or None)
+            sources: List of sources ['healthgrades', 'cigna', 'betterdoctor']
+            network: Insurance network filter (legacy, now uses source selection)
         """
         if sources is None:
             sources = ['healthgrades']
@@ -362,8 +429,18 @@ class REIScraper:
         providers = []
 
         if 'healthgrades' in sources:
-            print(f"Scraping Healthgrades for {state}...")
-            hg_providers = self.healthgrades.search_providers(state, insurance=network)
+            print(f"[Scraper] Querying Healthgrades via Thunderbit for {state}...")
+            hg_providers = self.healthgrades.search_providers(state)
             providers.extend(hg_providers)
+
+        if 'cigna' in sources:
+            print(f"[Scraper] Querying Cigna Provider Directory for {state}...")
+            cigna_providers = self.cigna.search_providers(state)
+            providers.extend(cigna_providers)
+            
+        if 'betterdoctor' in sources:
+            print(f"[Scraper] Querying BetterDoctor for {state}...")
+            bd_providers = self.betterdoctor.search_providers(state)
+            providers.extend(bd_providers)
 
         return providers
