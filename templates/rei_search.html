@@ -44,8 +44,29 @@
         }
         .subtitle {
             color: #666;
-            margin-bottom: 30px;
+            margin-bottom: 15px;
             font-size: 14px;
+        }
+        .search-criteria {
+            background: #e8f4f8;
+            padding: 12px 15px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+            margin-bottom: 25px;
+            text-align: left;
+        }
+        .search-criteria label {
+            display: block;
+            margin-bottom: 5px;
+            color: #333;
+            font-weight: 600;
+            font-size: 13px;
+        }
+        .search-criteria p {
+            color: #555;
+            font-size: 0.9rem;
+            margin: 0;
+            line-height: 1.4;
         }
         .form-group {
             margin-bottom: 24px;
@@ -188,6 +209,14 @@
         <h1>REI Provider Scraper</h1>
         <p class="subtitle">Search and scrape for REI Specialists</p>
         
+        <!-- Dynamic Search Criteria Box -->
+        <div class="search-criteria">
+            <label>🔍 Search Criteria</label>
+            <p id="searchCriteriaText">
+                This search will find all REI specialists in <strong id="selectedState">the selected state</strong> who accept Cigna insurance from <strong id="selectedWebsites">Healthgrades</strong>.
+            </p>
+        </div>
+        
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 <div class="flash-messages">
@@ -198,7 +227,7 @@
             {% endif %}
         {% endwith %}
         
-        <form method="POST" action="/search">
+        <form method="POST" action="/search" id="searchForm">
             <div class="form-group">
                 <label for="state">State</label>
                 <select name="state" id="state" required>
@@ -260,21 +289,14 @@
                 <label>Data Sources</label>
                 <div class="checkbox-group">
                     <div class="checkbox-item">
-                        <input type="checkbox" name="sources" id="healthgrades" value="healthgrades" checked>
+                        <input type="checkbox" name="sources" id="healthgrades" value="healthgrades" checked class="source-checkbox">
                         <label for="healthgrades">Healthgrades (<a href="https://www.healthgrades.com" target="_blank">www.healthgrades.com</a>)</label>
                     </div>
                     <div class="checkbox-item">
-                        <input type="checkbox" name="sources" id="cigna" value="cigna">
+                        <input type="checkbox" name="sources" id="cigna" value="cigna" class="source-checkbox">
                         <label for="cigna">Cigna Network (<a href="https://www.cigna.com" target="_blank">www.cigna.com</a>)</label>
                     </div>
                 </div>
-            </div>
-            
-            <div class="form-group" style="background: #e8f4f8; padding: 15px; border-radius: 8px; border-left: 4px solid #667eea;">
-                <label style="margin-bottom: 5px;">🔍 Search Criteria</label>
-                <p style="color: #555; font-size: 0.9rem; margin: 0;">
-                    This search will find all REI specialists in the selected state who <strong>accept Cigna insurance</strong>.
-                </p>
             </div>
             
             <button type="submit">Search Providers</button>
@@ -284,6 +306,46 @@
     </div>
     
     <script>
+        // Update search criteria text dynamically
+        function updateSearchCriteria() {
+            const stateSelect = document.getElementById('state');
+            const selectedState = stateSelect.options[stateSelect.selectedIndex].text;
+            const stateText = stateSelect.value ? selectedState : 'the selected state';
+            document.getElementById('selectedState').textContent = stateText;
+            
+            // Get selected websites
+            const checkboxes = document.querySelectorAll('.source-checkbox:checked');
+            const selectedSites = Array.from(checkboxes).map(cb => {
+                const label = document.querySelector(`label[for="${cb.id}"]`);
+                // Extract just the site name (before the parenthesis)
+                const text = label.textContent;
+                return text.split('(')[0].trim();
+            });
+            
+            let sitesText;
+            if (selectedSites.length === 0) {
+                sitesText = 'no selected websites';
+            } else if (selectedSites.length === 1) {
+                sitesText = selectedSites[0];
+            } else if (selectedSites.length === 2) {
+                sitesText = selectedSites.join(' and ');
+            } else {
+                const last = selectedSites.pop();
+                sitesText = selectedSites.join(', ') + ', and ' + last;
+            }
+            
+            document.getElementById('selectedWebsites').textContent = sitesText;
+        }
+        
+        // Add event listeners
+        document.getElementById('state').addEventListener('change', updateSearchCriteria);
+        document.querySelectorAll('.source-checkbox').forEach(cb => {
+            cb.addEventListener('change', updateSearchCriteria);
+        });
+        
+        // Initialize on page load
+        updateSearchCriteria();
+        
         function openLogoFullscreen() {
             document.getElementById('logoFullscreen').classList.add('active');
             document.body.style.overflow = 'hidden';
