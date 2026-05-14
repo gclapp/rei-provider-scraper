@@ -90,6 +90,13 @@
             font-weight: normal;
             cursor: pointer;
         }
+        .checkbox-item label a {
+            color: #667eea;
+            text-decoration: none;
+        }
+        .checkbox-item label a:hover {
+            text-decoration: underline;
+        }
         button {
             width: 100%;
             padding: 16px;
@@ -179,7 +186,7 @@
     <div class="container">
         <img src="/static/logo.png" alt="REI Provider Scraper Logo" class="logo" onclick="openLogoFullscreen()">
         <h1>REI Provider Scraper</h1>
-        <p class="subtitle">Search for Reproductive Endocrinology & Infertility specialists</p>
+        <p class="subtitle">Search and scrape for REI Specialists</p>
         
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
@@ -254,11 +261,11 @@
                 <div class="checkbox-group">
                     <div class="checkbox-item">
                         <input type="checkbox" name="sources" id="healthgrades" value="healthgrades" checked>
-                        <label for="healthgrades">Healthgrades</label>
+                        <label for="healthgrades">Healthgrades (<a href="https://www.healthgrades.com" target="_blank">www.healthgrades.com</a>)</label>
                     </div>
                     <div class="checkbox-item">
                         <input type="checkbox" name="sources" id="cigna" value="cigna">
-                        <label for="cigna">Cigna Network</label>
+                        <label for="cigna">Cigna Network (<a href="https://www.cigna.com" target="_blank">www.cigna.com</a>)</label>
                     </div>
                 </div>
             </div>
