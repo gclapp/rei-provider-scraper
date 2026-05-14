@@ -1,73 +1,51 @@
 # REI Provider Scraper
 
-## Overview
+A standalone web application for scraping Reproductive Endocrinology & Infertility (REI) specialist data from multiple sources.
 
-Mobile-first web scraper to collect Reproductive Endocrinology and Infertility (REI) specialist data from Healthgrades and Cigna.
+## Features
+
+- **Healthgrades Integration**: Scrape provider names, locations, clinics, ratings, and reviews
+- **Cigna Network Check**: Verify in-network status and covered plans
+- **Web Interface**: Clean, responsive UI for searching and viewing results
+- **API Endpoint**: JSON API for programmatic access
+
+## Installation
+
+```bash
+pip install -r requirements.txt
+```
+
+## Usage
+
+### Development
+```bash
+python app.py
+```
+
+### Production
+```bash
+gunicorn -c gunicorn.conf.py app:app
+```
+
+## API
+
+### Search Providers
+```bash
+POST /api/search
+Content-Type: application/json
+
+{
+  "state": "CA",
+  "sources": ["healthgrades"],
+  "network": "cigna"
+}
+```
 
 ## Data Sources
 
-| Priority | Source | Data |
-|----------|--------|------|
-| 1 | Healthgrades | Provider names, locations, clinics, ratings |
-| 2 | Cigna | In-network providers, plans covered |
-
-## Data Fields
-
-- Provider Name
-- Location (Address, City, State, Zip)
-- Clinic/Facility Name
-- Insurance Plans Accepted
-- Healthgrades Score/Rating
-- Specialties
-- NPI (if available)
-
-## Architecture
-
-```
-┌─────────────┐      ┌─────────────┐      ┌─────────────┐
-│   Mobile    │─────►│   Scraper   │─────►│   SQLite    │
-│   App       │      │   Engine    │      │   DB        │
-│  (React     │      │  (Python)   │      │             │
-│   Native)   │      │             │      │             │
-└─────────────┘      └──────┬──────┘      └─────────────┘
-                            │
-                   ┌────────┴────────┐
-                   │                 │
-                   ▼                 ▼
-            ┌──────────┐      ┌──────────┐
-            │Healthgrades│     │  Cigna   │
-            │   API      │      │  Portal  │
-            └──────────┘      └──────────┘
-```
-
-## Tech Stack
-
-- **Mobile:** React Native (Expo)
-- **Backend:** Python + FastAPI
-- **Scraping:** Playwright / Scrapy
-- **Database:** SQLite (local) + PostgreSQL (cloud)
-- **Export:** CSV, JSON, Excel
-
-## Project Status
-
-See [REQUIREMENTS.md](REQUIREMENTS.md) for detailed specifications.
-
-See [TESTING.md](TESTING.md) for testing strategy.
-
-## Quick Start
-
-```bash
-# Backend
-cd backend
-pip install -r requirements.txt
-python main.py
-
-# Mobile
-cd mobile
-npm install
-npx expo start
-```
+- **Healthgrades**: Provider information, ratings, reviews
+- **Cigna**: Insurance network status
 
 ## License
 
-Private - PGNY Internal Tool
+Private - For internal use only
