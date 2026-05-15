@@ -336,6 +336,13 @@
                     <!-- Title -->
                     <td>
                         <div class="title">{{ provider.title }}</div>
+                        {% if provider.data_source %}
+                        <div style="margin-top: 5px;">
+                            <span class="source-badge" style="background: #e8eaf6; color: #3f51b5; padding: 2px 8px; border-radius: 12px; font-size: 0.75em;">
+                                {{ provider.data_source }}
+                            </span>
+                        </div>
+                        {% endif %}
                     </td>
                     
                     <!-- Expertise -->
