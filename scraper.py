@@ -85,10 +85,14 @@ class HealthgradesScraper:
 
 class CignaProviderDirectoryScraper:
     """
-    Cigna Provider Directory scraper using FHIR API
+    Cigna Provider Directory scraper
+    
+    Two methods:
+    1. FHIR API (requires credentials from developer.cigna.com)
+    2. Web scraping (works immediately, no API key needed)
     
     API Endpoint: https://fhir.cigna.com/ProviderDirectory/v1
-    Documentation: https://developer.cigna.com/
+    Web Directory: https://hcpdirectory.cigna.com
     """
 
     BASE_URL = "https://fhir.cigna.com/ProviderDirectory/v1"
@@ -143,14 +147,17 @@ class CignaProviderDirectoryScraper:
         
         print(f"[Cigna] Searching for {specialty} in {state}...")
         
-        # Try FHIR API first
+        # Try FHIR API first if credentials available
         if self.client_id and self.client_secret:
+            print("[Cigna] Attempting FHIR API...")
             providers = self._search_fhir_api(state, specialty, limit)
+            if providers:
+                print(f"[Cigna] FHIR API returned {len(providers)} providers")
+                return providers
         
-        # Fallback to web scraping if API fails or no credentials
-        if not providers:
-            print("[Cigna] Falling back to web directory...")
-            providers = self._search_web_directory(state, specialty, limit)
+        # Fallback to web scraping
+        print("[Cigna] Using web scraping (no API credentials needed)...")
+        providers = self._search_web_directory(state, specialty, limit)
         
         return providers
 
@@ -191,30 +198,142 @@ class CignaProviderDirectoryScraper:
         return providers
 
     def _search_web_directory(self, state: str, specialty: str, limit: int) -> List[Provider]:
-        """Search using Cigna web directory (fallback)"""
+        """Search using Cigna web directory with requests-based scraping"""
         providers = []
         
         try:
-            # Cigna web search URL
-            search_url = f"{self.WEB_URL}/web/public/consumer/directory/search"
+            # Cigna web search uses a different approach
+            # Try to use their search endpoint directly
+            search_url = f"{self.WEB_URL}/web/public/consumer/directory/search-results"
             
             params = {
                 'location': state,
-                'specialty': specialty.replace(' ', '%20'),
-                'type': 'provider'
+                'specialty': specialty,
+                'type': 'provider',
+                'page': 1
             }
             
-            print(f"[Cigna Web] URL: {search_url}?{ '&'.join(f'{k}={v}' for k,v in params.items()) }")
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Referer': f'{self.WEB_URL}/web/public/consumer/directory/search'
+            }
             
-            # Note: This would require Selenium/Playwright for JavaScript rendering
-            # For now, return empty and instruct user
-            print("[Cigna Web] Web scraping requires headless browser (Selenium/Playwright)")
-            print("[Cigna Web] Consider using FHIR API with client credentials")
+            print(f"[Cigna Web] Searching: {search_url}")
             
+            response = self.session.get(search_url, params=params, headers=headers, timeout=30)
+            
+            if response.status_code == 200:
+                # Parse HTML for provider listings
+                from bs4 import BeautifulSoup
+                soup = BeautifulSoup(response.text, 'html.parser')
+                
+                # Look for provider cards (adjust selectors based on actual HTML structure)
+                provider_cards = soup.find_all('div', class_=re.compile('provider-card|search-result|provider-item'))
+                
+                if not provider_cards:
+                    # Try alternative selectors
+                    provider_cards = soup.find_all('article') or soup.find_all('div', {'data-testid': True})
+                
+                print(f"[Cigna Web] Found {len(provider_cards)} provider cards")
+                
+                for card in provider_cards[:limit]:
+                    provider = self._parse_web_provider_card(card)
+                    if provider:
+                        providers.append(provider)
+                        
+            else:
+                print(f"[Cigna Web] HTTP {response.status_code}")
+                
         except Exception as e:
             print(f"[Cigna Web] Error: {e}")
+            import traceback
+            traceback.print_exc()
             
         return providers
+
+    def _parse_web_provider_card(self, card) -> Optional[Provider]:
+        """Parse a provider card from Cigna web directory"""
+        try:
+            # Extract name
+            name_elem = card.find(['h2', 'h3', 'a'], class_=re.compile('name|title'))
+            if not name_elem:
+                name_elem = card.find(string=re.compile('Dr\.|MD|DO'))
+                if name_elem:
+                    name_elem = name_elem.parent
+                    
+            full_name = name_elem.get_text(strip=True) if name_elem else "Unknown Provider"
+            
+            # Parse name
+            name_parts = self._parse_name(full_name)
+            
+            # Extract specialty
+            specialty_elem = card.find(class_=re.compile('specialty'))
+            expertise = [specialty_elem.get_text(strip=True)] if specialty_elem else ['Reproductive Endocrinology']
+            
+            # Extract location
+            location_elem = card.find(class_=re.compile('location|address'))
+            office_location = location_elem.get_text(strip=True) if location_elem else ''
+            
+            # Parse city/state from location
+            city, state, zip_code = '', '', ''
+            if office_location:
+                match = re.search(r'([^,]+),\s*([A-Z]{2})\s*(\d{5}(-\d{4})?)?', office_location)
+                if match:
+                    city = match.group(1).strip()
+                    state = match.group(2)
+                    zip_code = match.group(3) if match.group(3) else ''
+            
+            # Extract phone
+            phone_elem = card.find('a', href=re.compile('tel:'))
+            phone = phone_elem.get_text(strip=True) if phone_elem else None
+            
+            # Extract profile URL
+            profile_link = card.find('a', href=re.compile('/provider/|/doctor/'))
+            profile_url = ''
+            if profile_link and profile_link.get('href'):
+                profile_url = urljoin(self.WEB_URL, profile_link['href'])
+            
+            return Provider(
+                first_name=name_parts['first'],
+                last_name=name_parts['last'],
+                title=name_parts['title'],
+                full_name=full_name,
+                photo_url=None,
+                expertise=expertise,
+                healthgrades_rating=None,
+                review_count=None,
+                office_location=office_location,
+                city=city,
+                state=state,
+                zip_code=zip_code,
+                phone=phone,
+                bio='',
+                profile_url=profile_url,
+                source='cigna',
+                insurance_accepted=['Cigna']
+            )
+            
+        except Exception as e:
+            print(f"[Cigna Web] Parse error: {e}")
+            return None
+
+    def _parse_name(self, full_name: str) -> Dict:
+        """Parse full name into components"""
+        title = ""
+        titles = ['MD', 'DO', 'PhD', 'Dr.', 'Dr', 'NP', 'PA', 'RN']
+        
+        for t in titles:
+            if f", {t}" in full_name or full_name.endswith(f" {t}"):
+                title = t
+                full_name = full_name.replace(f", {t}", "").replace(f" {t}", "").strip()
+                break
+        
+        parts = full_name.replace('Dr. ', '').replace('Dr ', '').split()
+        if len(parts) >= 2:
+            return {'first': parts[0], 'last': ' '.join(parts[1:]), 'title': title}
+        return {'first': full_name, 'last': '', 'title': title}
 
     def _parse_fhir_practitioner(self, resource: Dict) -> Optional[Provider]:
         """Parse FHIR Practitioner resource"""
