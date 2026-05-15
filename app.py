@@ -6,6 +6,7 @@ REI Provider Scraper - Flask Application
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 import json
 import os
+import sqlite3
 from pathlib import Path
 
 from scraper import REIScraper, Provider
@@ -15,6 +16,9 @@ app.secret_key = os.environ.get('SECRET_KEY', os.urandom(24))
 
 # Version info
 VERSION = "1.0.0"
+
+# Database path for Healthgrades data
+DB_PATH = Path('/home/ubuntu/.openclaw/workspace/projects/provider-directory/data/providers.db')
 
 @app.route('/')
 def index():
@@ -101,6 +105,205 @@ def health():
         'version': VERSION,
         'service': 'rei-provider-scraper'
     })
+
+
+# ============================================================
+# Healthgrades Data Viewer Endpoints
+# ============================================================
+
+def get_db_connection():
+    """Get database connection for Healthgrades data."""
+    if not DB_PATH.exists():
+        return None
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+@app.route('/healthgrades')
+def healthgrades_viewer():
+    """View all scraped Healthgrades REI providers with Cigna insurance."""
+    conn = get_db_connection()
+    if not conn:
+        flash('Database not found. Please run the scraper first.', 'error')
+        return redirect(url_for('index'))
+    
+    # Get filter parameters
+    state = request.args.get('state', '')
+    city = request.args.get('city', '')
+    search = request.args.get('search', '')
+    page = request.args.get('page', 1, type=int)
+    per_page = 50
+    
+    # Build query
+    where_clauses = ["source = 'healthgrades'"]
+    params = []
+    
+    if state:
+        where_clauses.append("state = ?")
+        params.append(state)
+    if city:
+        where_clauses.append("city LIKE ?")
+        params.append(f"%{city}%")
+    if search:
+        where_clauses.append("name LIKE ?")
+        params.append(f"%{search}%")
+    
+    where_sql = " AND ".join(where_clauses)
+    
+    # Get total count
+    count_sql = f"SELECT COUNT(*) FROM providers WHERE {where_sql}"
+    total = conn.execute(count_sql, params).fetchone()[0]
+    
+    # Get providers for current page
+    offset = (page - 1) * per_page
+    query = f"""
+        SELECT name, credentials, specialties, street, city, state, zip, phone,
+               accepting_new_patients, source, scraped_at
+        FROM providers
+        WHERE {where_sql}
+        ORDER BY state, city, name
+        LIMIT ? OFFSET ?
+    """
+    params.extend([per_page, offset])
+    
+    rows = conn.execute(query, params).fetchall()
+    conn.close()
+    
+    providers = []
+    for row in rows:
+        providers.append({
+            'name': row['name'],
+            'credentials': row['credentials'],
+            'specialties': json.loads(row['specialties']) if row['specialties'] else [],
+            'street': row['street'],
+            'city': row['city'],
+            'state': row['state'],
+            'zip': row['zip'],
+            'phone': row['phone'],
+            'accepting_new_patients': row['accepting_new_patients'],
+            'source': row['source'],
+            'scraped_at': row['scraped_at']
+        })
+    
+    total_pages = (total + per_page - 1) // per_page
+    
+    return render_template('healthgrades_viewer.html',
+                         providers=providers,
+                         total=total,
+                         page=page,
+                         total_pages=total_pages,
+                         state=state,
+                         city=city,
+                         search=search,
+                         version=VERSION)
+
+
+@app.route('/api/healthgrades/stats')
+def healthgrades_stats():
+    """Get statistics about Healthgrades data."""
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'error': 'Database not found'}), 404
+    
+    # Total providers
+    total = conn.execute(
+        "SELECT COUNT(*) FROM providers WHERE source = 'healthgrades'"
+    ).fetchone()[0]
+    
+    # Providers by state
+    states = conn.execute("""
+        SELECT state, COUNT(*) as count
+        FROM providers
+        WHERE source = 'healthgrades' AND state IS NOT NULL AND state != ''
+        GROUP BY state
+        ORDER BY count DESC
+    """).fetchall()
+    
+    # Providers by source (to show multiple sources when added)
+    sources = conn.execute("""
+        SELECT source, COUNT(*) as count
+        FROM providers
+        GROUP BY source
+        ORDER BY count DESC
+    """).fetchall()
+    
+    conn.close()
+    
+    return jsonify({
+        'total_healthgrades': total,
+        'states': [{'state': r['state'], 'count': r['count']} for r in states],
+        'by_source': [{'source': r['source'], 'count': r['count']} for r in sources]
+    })
+
+
+@app.route('/api/healthgrades/providers')
+def api_healthgrades_providers():
+    """API endpoint to get Healthgrades providers with filtering."""
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({'error': 'Database not found'}), 404
+    
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 50, type=int)
+    state = request.args.get('state', '')
+    search = request.args.get('search', '')
+    
+    where_clauses = ["source = 'healthgrades'"]
+    params = []
+    
+    if state:
+        where_clauses.append("state = ?")
+        params.append(state)
+    if search:
+        where_clauses.append("name LIKE ?")
+        params.append(f"%{search}%")
+    
+    where_sql = " AND ".join(where_clauses)
+    
+    # Get total
+    count_sql = f"SELECT COUNT(*) FROM providers WHERE {where_sql}"
+    total = conn.execute(count_sql, params).fetchone()[0]
+    
+    # Get providers
+    offset = (page - 1) * per_page
+    query = f"""
+        SELECT name, credentials, specialties, street, city, state, zip, phone,
+               accepting_new_patients, source, scraped_at
+        FROM providers
+        WHERE {where_sql}
+        ORDER BY state, city, name
+        LIMIT ? OFFSET ?
+    """
+    params.extend([per_page, offset])
+    
+    rows = conn.execute(query, params).fetchall()
+    conn.close()
+    
+    providers = []
+    for row in rows:
+        providers.append({
+            'name': row['name'],
+            'credentials': row['credentials'],
+            'specialties': json.loads(row['specialties']) if row['specialties'] else [],
+            'street': row['street'],
+            'city': row['city'],
+            'state': row['state'],
+            'zip': row['zip'],
+            'phone': row['phone'],
+            'accepting_new_patients': row['accepting_new_patients'],
+            'source': row['source'],
+            'scraped_at': row['scraped_at']
+        })
+    
+    return jsonify({
+        'providers': providers,
+        'total': total,
+        'page': page,
+        'per_page': per_page,
+        'pages': (total + per_page - 1) // per_page
+    })
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)

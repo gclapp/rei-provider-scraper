@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Healthgrades REI Providers - Cigna Network</title>
+    <link rel="icon" type="image/png" href="/static/logo.png">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 16px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        header h1 {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+        header p {
+            opacity: 0.9;
+        }
+        .stats-bar {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .stat-card h3 {
+            font-size: 0.85em;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 10px;
+        }
+        .stat-card .number {
+            font-size: 2.5em;
+            font-weight: bold;
+            color: #667eea;
+        }
+        .filters {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .filters input, .filters select {
+            padding: 12px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            min-width: 200px;
+        }
+        .filters input:focus, .filters select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        .filters button {
+            padding: 12px 24px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        .filters button:hover {
+            background: #5568d3;
+        }
+        .back-link {
+            display: inline-block;
+            margin-bottom: 20px;
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        .back-link:hover {
+            text-decoration: underline;
+        }
+        .providers-table {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th {
+            background: #667eea;
+            color: white;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        th:hover {
+            background: #5568d3;
+        }
+        td {
+            padding: 15px;
+            border-bottom: 1px solid #eee;
+        }
+        tr:hover {
+            background: #f8f9ff;
+        }
+        .provider-name {
+            font-weight: 600;
+            color: #333;
+        }
+        .credentials {
+            color: #666;
+            font-size: 0.9em;
+        }
+        .address {
+            color: #555;
+            font-size: 0.9em;
+        }
+        .phone {
+            color: #667eea;
+            font-weight: 500;
+        }
+        .source-badge {
+            display: inline-block;
+            background: #e8eaf6;
+            color: #3f51b5;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.8em;
+            font-weight: 500;
+        }
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 15px;
+            padding: 20px;
+            background: white;
+        }
+        .pagination a, .pagination span {
+            padding: 10px 16px;
+            border-radius: 8px;
+            text-decoration: none;
+        }
+        .pagination a {
+            background: #667eea;
+            color: white;
+        }
+        .pagination a:hover {
+            background: #5568d3;
+        }
+        .pagination .current {
+            background: #e0e0e0;
+            color: #333;
+            font-weight: 600;
+        }
+        .pagination .disabled {
+            background: #f0f0f0;
+            color: #999;
+            cursor: not-allowed;
+        }
+        .no-results {
+            text-align: center;
+            padding: 60px 20px;
+            color: #666;
+        }
+        .no-results h3 {
+            margin-bottom: 10px;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/" class="back-link">← Back to Search</a>
+        
+        <header>
+            <h1>🏥 Healthgrades REI Providers</h1>
+            <p>Reproductive Endocrinology & Infertility Specialists accepting Cigna Insurance</p>
+        </header>
+        
+        <div class="stats-bar">
+            <div class="stat-card">
+                <h3>Total Providers</h3>
+                <div class="number">{{ total }}</div>
+            </div>
+            <div class="stat-card">
+                <h3>Data Source</h3>
+                <div class="number" style="font-size: 1.5em;">Healthgrades</div>
+            </div>
+            <div class="stat-card">
+                <h3>Network</h3>
+                <div class="number" style="font-size: 1.5em;">Cigna</div>
+            </div>
+        </div>
+        
+        <div class="filters">
+            <input type="text" name="search" placeholder="Search by name..." value="{{ search }}" id="searchInput">
+            <select name="state" id="stateFilter">
+                <option value="">All States</option>
+                {% for st in ['AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA', 'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD', 'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ', 'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC', 'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY'] %}
+                <option value="{{ st }}" {% if state == st %}selected{% endif %}>{{ st }}</option>
+                {% endfor %}
+            </select>
+            <input type="text" name="city" placeholder="Filter by city..." value="{{ city }}" id="cityFilter">
+            <button onclick="applyFilters()">Apply Filters</button>
+            <button onclick="clearFilters()">Clear</button>
+        </div>
+        
+        {% if providers %}
+        <div class="providers-table">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Provider</th>
+                        <th>Location</th>
+                        <th>Phone</th>
+                        <th>Source</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for provider in providers %}
+                    <tr>
+                        <td>
+                            <div class="provider-name">{{ provider.name }}</div>
+                            {% if provider.credentials %}
+                            <div class="credentials">{{ provider.credentials }}</div>
+                            {% endif %}
+                        </td>
+                        <td class="address">
+                            {{ provider.street }}<br>
+                            {{ provider.city }}, {{ provider.state }} {{ provider.zip }}
+                        </td>
+                        <td class="phone">{{ provider.phone or 'N/A' }}</td>
+                        <td><span class="source-badge">{{ provider.source }}</span></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            
+            <div class="pagination">
+                {% if page > 1 %}
+                <a href="?page={{ page - 1 }}{% if state %}&state={{ state }}{% endif %}{% if city %}&city={{ city }}{% endif %}{% if search %}&search={{ search }}{% endif %}">← Previous</a>
+                {% else %}
+                <span class="disabled">← Previous</span>
+                {% endif %}
+                
+                <span class="current">Page {{ page }} of {{ total_pages }}</span>
+                
+                {% if page < total_pages %}
+                <a href="?page={{ page + 1 }}{% if state %}&state={{ state }}{% endif %}{% if city %}&city={{ city }}{% endif %}{% if search %}&search={{ search }}{% endif %}">Next →</a>
+                {% else %}
+                <span class="disabled">Next →</span>
+                {% endif %}
+            </div>
+        </div>
+        {% else %}
+        <div class="no-results">
+            <h3>No providers found</h3>
+            <p>Try adjusting your filters or run the scraper to populate the database.</p>
+        </div>
+        {% endif %}
+    </div>
+    
+    <script>
+        function applyFilters() {
+            const search = document.getElementById('searchInput').value;
+            const state = document.getElementById('stateFilter').value;
+            const city = document.getElementById('cityFilter').value;
+            
+            let url = '/healthgrades?page=1';
+            if (search) url += '&search=' + encodeURIComponent(search);
+            if (state) url += '&state=' + encodeURIComponent(state);
+            if (city) url += '&city=' + encodeURIComponent(city);
+            
+            window.location.href = url;
+        }
+        
+        function clearFilters() {
+            window.location.href = '/healthgrades';
+        }
+        
+        // Enter key on inputs
+        document.getElementById('searchInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') applyFilters();
+        });
+        document.getElementById('cityFilter').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') applyFilters();
+        });
+    </script>
+</body>
+</html>
