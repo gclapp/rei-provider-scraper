@@ -27,7 +27,7 @@ def index():
 
 @app.route('/search', methods=['POST'])
 def rei_search():
-    """Handle REI search form submission - defaults to Cigna network filter"""
+    """Handle REI search form submission - query Healthgrades database"""
     state = request.form.get('state', '').upper()
     sources = request.form.getlist('sources')
     
@@ -39,23 +39,60 @@ def rei_search():
         flash('Please select at least one source', 'error')
         return redirect(url_for('index'))
     
-    # Always filter for Cigna in-network providers
-    network = 'cigna'
-    
-    # Perform scrape
+    # Query Healthgrades database for providers in this state
     try:
-        scraper = REIScraper()
-        providers = scraper.scrape(state, sources=sources, network=network)
-        
-        # Store results in session for display
-        session['rei_results'] = [p.to_dict() for p in providers]
-        session['rei_search_params'] = {
-            'state': state,
-            'sources': sources,
-            'network': 'Cigna In-Network'
-        }
-        
-        return redirect(url_for('rei_results'))
+        conn = get_db_connection()
+        if conn:
+            cursor = conn.execute("""
+                SELECT name, credentials, specialties, street, city, state, zip, phone,
+                       accepting_new_patients, source, scraped_at
+                FROM providers
+                WHERE source = 'healthgrades' AND state = ?
+                ORDER BY city, name
+            """, (state,))
+            
+            rows = cursor.fetchall()
+            conn.close()
+            
+            # Transform to match the results template format
+            providers = []
+            for row in rows:
+                # Parse name into first/last
+                name_parts = row['name'].replace('Dr. ', '').replace(', MD', '').replace(', DO', '').split(' ')
+                first_name = name_parts[0] if len(name_parts) > 0 else ''
+                last_name = name_parts[-1] if len(name_parts) > 1 else ''
+                
+                providers.append({
+                    'first_name': first_name,
+                    'last_name': last_name,
+                    'full_name': row['name'],
+                    'title': row['credentials'] or 'MD',
+                    'photo_url': None,
+                    'healthgrades_rating': None,
+                    'review_count': None,
+                    'office_location': row['street'],
+                    'city': row['city'],
+                    'state': row['state'],
+                    'zip_code': row['zip'],
+                    'phone': row['phone'],
+                    'bio': None,
+                    'profile_url': f"https://www.healthgrades.com/usearch?what=Reproductive%20Endocrinology%20%26%20Infertility&entityCode=PS310&searchType=PracticingSpecialty&payors=HPY00006F7&distances=National",
+                    'expertise': json.loads(row['specialties']) if row['specialties'] else ['REI'],
+                    'source': row['source']
+                })
+            
+            # Store results in session for display
+            session['rei_results'] = providers
+            session['rei_search_params'] = {
+                'state': state,
+                'sources': sources,
+                'network': 'Cigna In-Network'
+            }
+            
+            return redirect(url_for('rei_results'))
+        else:
+            flash('Database not found. Please run the scraper first.', 'error')
+            return redirect(url_for('index'))
         
     except Exception as e:
         flash(f'Error during search: {str(e)}', 'error')
